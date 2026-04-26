@@ -35,47 +35,33 @@ const provider = new GoogleAuthProvider();
 
 window._signOut = () => signOut(auth);
 window._signIn  = () => {
-  const btn = document.querySelector('#loginScreen button');
+  const btn   = document.querySelector('#loginScreen button');
   const errEl = document.getElementById('loginError');
-  if (btn) { btn.textContent = 'Signing in…'; btn.disabled = true; }
-  if (errEl) errEl.style.display = 'none';
+  if (btn)   { btn.textContent = 'Signing in…'; btn.disabled = true; }
+  if (errEl) { errEl.style.display = 'none'; }
 
-  // Use redirect on mobile (more reliable), popup on desktop
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-  if (isMobile) {
-    // Redirect — page reloads, result handled by getRedirectResult below
-    signInWithRedirect(auth, provider).catch(e => {
-      if (btn) { btn.innerHTML = googleBtnHTML(); btn.disabled = false; }
-      if (errEl) { errEl.textContent = '❌ ' + (e.message || 'Sign-in failed'); errEl.style.display = 'block'; }
-      console.error('Redirect error:', e);
-    });
-  } else {
-    signInWithPopup(auth, provider).catch(e => {
-      if (btn) { btn.innerHTML = googleBtnHTML(); btn.disabled = false; }
-      if (e.code === 'auth/popup-blocked') {
-        // Fallback to redirect
-        signInWithRedirect(auth, provider);
-      } else {
-        if (errEl) { errEl.textContent = '❌ ' + (e.message || 'Sign-in failed'); errEl.style.display = 'block'; }
-        console.error('Popup error:', e);
-      }
-    });
-  }
+  // Always use redirect — works on ALL browsers and devices
+  // (popup is unreliable on mobile Safari, Chrome mobile, and PWA mode)
+  signInWithRedirect(auth, provider).catch(e => {
+    if (btn)   { btn.innerHTML = googleBtnHTML(); btn.disabled = false; }
+    if (errEl) { errEl.textContent = '❌ ' + (e.message || 'Sign-in failed'); errEl.style.display = 'block'; }
+    console.error('Sign-in error:', e);
+  });
 };
 
-// Handle redirect result when page loads back
+// Handle redirect result when page reloads back after Google sign-in
 getRedirectResult(auth).then(result => {
   if (result && result.user) {
-    console.log('Redirect sign-in success:', result.user.email);
+    console.log('Sign-in success:', result.user.email);
   }
 }).catch(e => {
   const errEl = document.getElementById('loginError');
-  if (errEl && e.code !== 'auth/no-auth-event') {
-    errEl.textContent = '❌ ' + (e.message || 'Sign-in failed. Check Firebase authorized domains.');
+  // Ignore the benign no-auth-event error on fresh page loads
+  if (errEl && e.code && e.code !== 'auth/no-auth-event') {
+    errEl.textContent = '❌ ' + (e.message || 'Sign-in failed.');
     errEl.style.display = 'block';
   }
-  console.error('Redirect result error:', e);
+  console.error('Redirect result error:', e.code, e.message);
 });
 
 let unsubs = {};
