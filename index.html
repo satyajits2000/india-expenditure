@@ -14,7 +14,8 @@
 <script type="module">
 import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
-         getRedirectResult, signOut, onAuthStateChanged }
+         getRedirectResult, signOut, onAuthStateChanged, setPersistence,
+         browserLocalPersistence }
                            from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc,
          doc, onSnapshot }  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -33,32 +34,51 @@ const auth     = getAuth(app);
 const db       = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
+// Force local persistence so session survives page reloads on mobile
+setPersistence(auth, browserLocalPersistence).catch(console.error);
+
+// Flag to prevent redirect loop
+let _redirectHandled = false;
+
 window._signOut = () => signOut(auth);
-window._signIn  = () => {
+
+window._signIn = async () => {
   const btn   = document.querySelector('#loginScreen button');
   const errEl = document.getElementById('loginError');
   if (btn)   { btn.textContent = 'Signing in…'; btn.disabled = true; }
   if (errEl) { errEl.style.display = 'none'; }
 
-  // Always use redirect — works on ALL browsers and devices
-  // (popup is unreliable on mobile Safari, Chrome mobile, and PWA mode)
-  signInWithRedirect(auth, provider).catch(e => {
-    if (btn)   { btn.innerHTML = googleBtnHTML(); btn.disabled = false; }
-    if (errEl) { errEl.textContent = '❌ ' + (e.message || 'Sign-in failed'); errEl.style.display = 'block'; }
-    console.error('Sign-in error:', e);
-  });
+  try {
+    // Try popup first — works on desktop and most mobile browsers
+    await signInWithPopup(auth, provider);
+  } catch(e) {
+    if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-cancelled-by-user' || e.code === 'auth/cancelled-popup-request') {
+      // Popup blocked — fall back to redirect
+      try {
+        await signInWithRedirect(auth, provider);
+      } catch(e2) {
+        if (btn)   { btn.innerHTML = googleBtnHTML(); btn.disabled = false; }
+        if (errEl) { errEl.textContent = '❌ ' + (e2.message||'Sign-in failed'); errEl.style.display = 'block'; }
+      }
+    } else {
+      if (btn)   { btn.innerHTML = googleBtnHTML(); btn.disabled = false; }
+      if (errEl) { errEl.textContent = '❌ ' + (e.message||'Sign-in failed'); errEl.style.display = 'block'; }
+      console.error('Sign-in error:', e.code, e.message);
+    }
+  }
 };
 
-// Handle redirect result when page reloads back after Google sign-in
+// Handle redirect result ONCE — prevents the loop
 getRedirectResult(auth).then(result => {
+  _redirectHandled = true;
   if (result && result.user) {
-    console.log('Sign-in success:', result.user.email);
+    console.log('Redirect sign-in success:', result.user.email);
   }
 }).catch(e => {
+  _redirectHandled = true;
   const errEl = document.getElementById('loginError');
-  // Ignore the benign no-auth-event error on fresh page loads
   if (errEl && e.code && e.code !== 'auth/no-auth-event') {
-    errEl.textContent = '❌ ' + (e.message || 'Sign-in failed.');
+    errEl.textContent = '❌ ' + (e.message||'Sign-in failed.');
     errEl.style.display = 'block';
   }
   console.error('Redirect result error:', e.code, e.message);
@@ -776,14 +796,14 @@ const DA=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 const CATS={
   income:  ['Rent Received','Other Income','Salary','Interest','Dividend','Freelance'],
-  expense: ['LIC Premium','Food','Transport','Shopping','Medicine','Miscellaneous','Repairs','Utilities','Gift','Cig & Tea','Driver','Pujo / Religious'],
+  expense: ['LIC Premium','Monthly EMI','Food','Transport','Shopping','Medicine','Miscellaneous','Repairs','Utilities','Gift','Cig & Tea','Driver','Pujo / Religious'],
   transfer:['To Wife','To Son','To Family','Bank Transfer','To India Account','Other Transfer']
 };
 const META={
   'Rent Received':{i:'🏠',c:'rgba(34,197,94,0.15)'},'Other Income':{i:'💰',c:'rgba(34,197,94,0.15)'},
   'Salary':{i:'💼',c:'rgba(34,197,94,0.15)'},'Interest':{i:'📈',c:'rgba(34,197,94,0.15)'},
   'Dividend':{i:'📊',c:'rgba(34,197,94,0.15)'},'Freelance':{i:'🖥️',c:'rgba(34,197,94,0.15)'},
-  'LIC Premium':{i:'🛡️',c:'rgba(244,63,94,0.15)'},'Food':{i:'🍽️',c:'rgba(245,158,11,0.15)'},
+  'LIC Premium':{i:'🛡️',c:'rgba(244,63,94,0.15)'},'Monthly EMI':{i:'🏦',c:'rgba(244,63,94,0.15)'},'Food':{i:'🍽️',c:'rgba(245,158,11,0.15)'},
   'Transport':{i:'🚕',c:'rgba(59,130,246,0.15)'},'Shopping':{i:'🛍️',c:'rgba(168,85,247,0.15)'},
   'Medicine':{i:'💊',c:'rgba(244,63,94,0.15)'},'Miscellaneous':{i:'🧾',c:'rgba(100,100,130,0.2)'},
   'Repairs':{i:'🔧',c:'rgba(245,158,11,0.15)'},'Utilities':{i:'💡',c:'rgba(245,158,11,0.15)'},
