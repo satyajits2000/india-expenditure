@@ -1256,8 +1256,21 @@ async function updateFixed(id) {
     freq: document.getElementById('ed-ffreq').value,
   };
   if(!data.name||!data.amt){ toast('⚠️ Fill name and amount','error'); return; }
-  await fbUpdate('fixed', window._editFixedDocId, data);
-  closeModal('edit-modal'); toast('✅ Fixed expense updated','success');
+  try {
+    if(window._editFixedDocId) {
+      // Existing Firestore doc — just update it
+      await fbUpdate('fixed', window._editFixedDocId, data);
+    } else {
+      // Default item (no Firestore doc yet) — add as new doc
+      // The default will be hidden once a Firestore item with same id exists
+      await fbAdd('fixed', {...data, replaces: id});
+    }
+    closeModal('edit-modal');
+    toast('✅ Fixed expense updated','success');
+  } catch(e) {
+    toast('❌ Save failed: '+e.message,'error');
+    console.error(e);
+  }
 }
 
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
